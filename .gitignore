@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# local pointer to the live Claude Design canvas artifact(s) — see docs/design-canvas.example.md
+/docs/design-canvas.local.md
+
 # debug
 npm-debug.log*
 yarn-debug.log*
