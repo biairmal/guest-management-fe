@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Layout, Menu, Avatar, Dropdown, Typography, Button, Tooltip } from "antd";
 import type { MenuProps } from "antd";
@@ -22,7 +22,7 @@ import { CURRENT_USER, initials, roleName } from "../_lib/mock-data";
 import { useThemeMode } from "./ThemeModeProvider";
 import ChangeMyPasswordModal from "./ChangeMyPasswordModal";
 
-const { Header, Sider, Content } = Layout;
+const { Header, Sider, Content, Footer } = Layout;
 
 // Routes that actually exist in this UI-only pass — everything else in the
 // nav (including every "Events" child below) is the pre-existing scaffold's
@@ -73,7 +73,23 @@ export default function AppShell({ children }: React.PropsWithChildren) {
   const router = useRouter();
   const pathname = usePathname();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [apiVersion, setApiVersion] = useState<string | null>(null);
   const { mode, toggle } = useThemeMode();
+
+  useEffect(() => {
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!base) return;
+    let cancelled = false;
+    fetch(`${base}/version`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => {
+        if (!cancelled && typeof data?.version === "string") setApiVersion(data.version);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleMenuClick: MenuProps["onClick"] = ({ key }) => {
     const route = NAV_ROUTES[key];
@@ -166,6 +182,13 @@ export default function AppShell({ children }: React.PropsWithChildren) {
         </Sider>
         <Content style={{ padding: 24 }}>{children}</Content>
       </Layout>
+      {apiVersion && (
+        <Footer style={{ textAlign: "center", padding: "12px 24px" }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {`API v${apiVersion}`}
+          </Typography.Text>
+        </Footer>
+      )}
       <ChangeMyPasswordModal
         open={changePasswordOpen}
         onClose={() => setChangePasswordOpen(false)}
