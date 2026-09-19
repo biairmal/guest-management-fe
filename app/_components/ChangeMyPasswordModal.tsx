@@ -1,24 +1,44 @@
 "use client";
 
-import React from "react";
-import { Modal, Form, Input, Typography } from "antd";
-import { CURRENT_USER } from "../_lib/mock-data";
+import React, { useState } from "react";
+import { Modal, Form, Input, Typography, Alert } from "antd";
+import { api, ApiError, markPasswordChanged } from "../_lib/api";
 
 type Props = {
   open: boolean;
   onClose: () => void;
+  email: string;
 };
 
 // Self-service "Change my password" — POST /api/v1/users/me/password.
-// ponytail: submit just closes the modal, no API call yet (UI-only pass).
-export default function ChangeMyPasswordModal({ open, onClose }: Props) {
+export default function ChangeMyPasswordModal({ open, onClose, email }: Props) {
   const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleOk = () => {
-    form.validateFields().then(() => {
-      form.resetFields();
-      onClose();
-    });
+  const close = () => {
+    form.resetFields();
+    setError(null);
+    onClose();
+  };
+
+  const handleOk = async () => {
+    const values = await form.validateFields().catch(() => null);
+    if (!values) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api("/api/v1/users/me/password", {
+        method: "POST",
+        body: JSON.stringify({ password: values.password }),
+      });
+      markPasswordChanged();
+      close();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -26,16 +46,14 @@ export default function ChangeMyPasswordModal({ open, onClose }: Props) {
       title="Change my password"
       open={open}
       onOk={handleOk}
-      onCancel={() => {
-        form.resetFields();
-        onClose();
-      }}
+      onCancel={close}
       okText="Save password"
+      confirmLoading={saving}
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
-        Signed in as {CURRENT_USER.email}. This updates your own password
-        only — POST /api/v1/users/me/password.
+        Signed in as {email}. This updates your own password only.
       </Typography.Paragraph>
+      {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
       <Form form={form} layout="vertical">
         <Form.Item
           name="password"

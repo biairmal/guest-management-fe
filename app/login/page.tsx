@@ -3,29 +3,32 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Form, Input, Button, Alert, Typography } from "antd";
-import { MOCK_USERS } from "../_lib/mock-data";
+import { ApiError, login } from "../_lib/api";
+import { canManageUsers } from "../_lib/roles";
 
-// ponytail: no POST /api/v1/auth/login call yet — "login" just looks the
-// email up in MOCK_USERS and branches on its mustChangePassword flag, the
-// same branch real auth/session plumbing will drive off TokenPair later.
 export default function LoginPage() {
   const router = useRouter();
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const onFinish = (values: { email: string; password: string }) => {
+  const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
-    setError(false);
-    setTimeout(() => {
+    setError(null);
+    try {
+      const session = await login(values.email, values.password);
+      if (session.mustChangePassword) router.push("/change-password");
+      else router.push(canManageUsers(session.roleId) ? "/users" : "/");
+    } catch (err) {
+      // Generic 401 copy — never hints which field was wrong.
+      setError(
+        err instanceof ApiError && err.status === 401
+          ? "Invalid email or password."
+          : err instanceof ApiError
+            ? err.message
+            : "Could not reach the server. Try again.",
+      );
       setLoading(false);
-      const user = MOCK_USERS.find((u) => u.email === values.email);
-      if (!user) {
-        // Generic 401 copy — never hints which field was wrong.
-        setError(true);
-        return;
-      }
-      router.push(user.mustChangePassword ? "/change-password" : "/users");
-    }, 300);
+    }
   };
 
   return (
@@ -57,7 +60,7 @@ export default function LoginPage() {
         {error && (
           <Alert
             type="error"
-            title="Invalid email or password."
+            title={error}
             showIcon
             style={{ marginBottom: 20 }}
           />

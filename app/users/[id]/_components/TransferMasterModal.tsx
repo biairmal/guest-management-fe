@@ -1,27 +1,43 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal, Alert, Form, Select, Checkbox, Tag } from "antd";
-import { roleName, type MockUser } from "../../../_lib/mock-data";
+import { Modal, Alert, Checkbox, Typography } from "antd";
+import { api, ApiError } from "../../../_lib/api";
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  candidates: MockUser[]; // tenant's other active users, self already excluded
+  onDone: () => void;
+  userId: string;
+  targetEmail: string;
 };
 
 // "Transfer tenant master ownership" — POST /api/v1/users/{id}/transfer-master,
 // only rendered on the detail page when the signed-in user is the current
-// master. ponytail: submit just closes the modal, no API call yet.
-export default function TransferMasterModal({ open, onClose, candidates }: Props) {
-  const [form] = Form.useForm();
+// master. The target is the user whose detail page this is.
+export default function TransferMasterModal({ open, onClose, onDone, userId, targetEmail }: Props) {
   const [confirmed, setConfirmed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleOk = () => {
-    form.validateFields().then(() => {
-      setConfirmed(false);
-      onClose();
-    });
+  const close = () => {
+    setConfirmed(false);
+    setError(null);
+    onClose();
+  };
+
+  const handleOk = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api(`/api/v1/users/${userId}/transfer-master`, { method: "POST" });
+      close();
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -29,12 +45,10 @@ export default function TransferMasterModal({ open, onClose, candidates }: Props
       title="Transfer tenant master ownership"
       open={open}
       onOk={handleOk}
-      onCancel={() => {
-        setConfirmed(false);
-        onClose();
-      }}
+      onCancel={close}
       okText="Transfer ownership"
       okButtonProps={{ danger: true, disabled: !confirmed }}
+      confirmLoading={saving}
     >
       <Alert
         type="error"
@@ -42,26 +56,10 @@ export default function TransferMasterModal({ open, onClose, candidates }: Props
         style={{ marginBottom: 20 }}
         title="You are the current tenant master. Confirming hands is_tenant_master to the user below and clears your own — effective immediately, only reversible by the new master transferring it back."
       />
-      <Form form={form} layout="vertical">
-        <Form.Item
-          name="targetUserId"
-          label="New tenant master"
-          rules={[{ required: true, message: "Select a new tenant master" }]}
-          extra="Lists active users in your own tenant, excluding yourself. A target from another tenant isn't offered (the API 404s it either way)."
-        >
-          <Select
-            placeholder="Select a user"
-            options={candidates.map((u) => ({
-              value: u.id,
-              label: (
-                <span>
-                  {u.email} <Tag color="#4F46E5">{roleName(u.roleId)}</Tag>
-                </span>
-              ),
-            }))}
-          />
-        </Form.Item>
-      </Form>
+      {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} />}
+      <Typography.Paragraph>
+        New tenant master: <strong>{targetEmail}</strong>
+      </Typography.Paragraph>
       <Checkbox checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)}>
         I understand I will immediately lose tenant-master privileges.
       </Checkbox>

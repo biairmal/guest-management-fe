@@ -7,7 +7,9 @@ import type { TableColumnsType } from "antd";
 import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import AppShell from "../_components/AppShell";
-import { CURRENT_USER, MOCK_USERS, ROLES, MockUser, roleName } from "../_lib/mock-data";
+import QueryState from "../_components/QueryState";
+import { useApi, useSession, type Page, type User } from "../_lib/api";
+import { ROLES, roleName } from "../_lib/roles";
 import FilterPopoverButton from "./_components/FilterPopoverButton";
 import SortPopoverButton from "./_components/SortPopoverButton";
 import {
@@ -18,19 +20,22 @@ import {
   type UserField,
 } from "./_components/filter-sort-types";
 
-function fieldValue(user: MockUser, field: UserField): string {
-  if (field === "role") return roleName(user.roleId);
-  return user[field];
+const DATE_FIELD = { createdAt: "created_at", updatedAt: "updated_at" } as const;
+
+function fieldValue(user: User, field: UserField): string {
+  if (field === "role") return roleName(user.role_id);
+  if (field === "email") return user.email;
+  return user[DATE_FIELD[field]];
 }
 
-function matchesCondition(user: MockUser, cond: FilterCondition): boolean {
+function matchesCondition(user: User, cond: FilterCondition): boolean {
   if (cond.field === "role") {
     if (!cond.value) return true;
-    const isMatch = user.roleId === cond.value;
+    const isMatch = user.role_id === cond.value;
     return cond.operator === "is_not" ? !isMatch : isMatch;
   }
   if (cond.field === "createdAt" || cond.field === "updatedAt") {
-    const raw = dayjs(user[cond.field]);
+    const raw = dayjs(user[DATE_FIELD[cond.field]]);
     if (cond.operator === "between") {
       if (!cond.value || !cond.value2) return true;
       return !raw.isBefore(dayjs(cond.value), "day") && !raw.isAfter(dayjs(cond.value2), "day");
@@ -39,14 +44,14 @@ function matchesCondition(user: MockUser, cond: FilterCondition): boolean {
     const target = dayjs(cond.value);
     return cond.operator === "gt" ? raw.isAfter(target, "day") : raw.isBefore(target, "day");
   }
-  // name / email — text contains|is
-  const raw = user[cond.field].toLowerCase();
+  // email — text contains|is
+  const raw = user.email.toLowerCase();
   const val = cond.value.trim().toLowerCase();
   if (!val) return true;
   return cond.operator === "is" ? raw === val : raw.includes(val);
 }
 
-function sortUsers(users: MockUser[], keys: SortKey[]): MockUser[] {
+function sortUsers(users: User[], keys: SortKey[]): User[] {
   if (!keys.length) return users;
   return [...users].sort((a, b) => {
     for (const key of keys) {
@@ -61,8 +66,11 @@ function formatDate(iso: string): string {
   return dayjs(iso).format("MMM D, YYYY");
 }
 
-// Table bound to mock rows shaped like GET /api/v1/users — real pass swaps
-// dataSource for a fetch against the `?page&size&sort&email=` query shape.
+// ponytail: loads one page of the max size (100) and filters/sorts it
+// client-side; switch to server-side page/sort/filter params once a tenant
+// can outgrow 100 users.
+const LIST_PATH = "/api/v1/users?page=1&size=100";
+
 // View-only: no action column, no inline row actions — the whole row is a
 // link to the user's detail page (per the product-direction amendment).
 // Column set + Filter/Sort toolbar per DEVELOPMENT_PLAN.md B11 §7 /
@@ -70,23 +78,24 @@ function formatDate(iso: string): string {
 // per-column filter/sorter (§4's rationale: only one field at a time).
 export default function UsersListPage() {
   const router = useRouter();
+  const session = useSession();
+  const { data, error, loading, reload } = useApi<Page<User>>(LIST_PATH);
   const [search, setSearch] = useState("");
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
   const [sortKeys, setSortKeys] = useState<SortKey[]>([
-    { id: newId("s"), field: "name", direction: "asc" },
+    { id: newId("s"), field: "email", direction: "asc" },
   ]);
 
   const roleOptions = ROLES.map((r) => ({ value: r.id, label: r.name }));
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const rows = MOCK_USERS.filter((u) => {
-      const matchesSearch =
-        !term || u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term);
+    const rows = (data?.items ?? []).filter((u) => {
+      const matchesSearch = !term || u.email.toLowerCase().includes(term);
       return matchesSearch && conditions.every((c) => matchesCondition(u, c));
     });
     return sortUsers(rows, sortKeys);
-  }, [search, conditions, sortKeys]);
+  }, [data, search, conditions, sortKeys]);
 
   // Table header sort affordance is presentational — the badge-count Sort
   // button/popover above remains the actual source of truth for multi-key
@@ -121,13 +130,13 @@ export default function UsersListPage() {
     );
   };
 
-  const columns: TableColumnsType<MockUser> = [
+  const columns: TableColumnsType<User> = [
     {
-      title: sortableTitle("name"),
-      dataIndex: "name",
-      render: (name: string, user) => (
+      title: sortableTitle("email"),
+      dataIndex: "email",
+      render: (email: string, user) => (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {user.isTenantMaster && (
+          {user.is_tenant_master && (
             <Tooltip title="Tenant master">
               <span
                 style={{
@@ -142,8 +151,8 @@ export default function UsersListPage() {
           )}
           <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.3 }}>
             <span>
-              {name}
-              {user.mustChangePassword && (
+              {email}
+              {user.must_change_password && (
                 <Tooltip title="Must change password">
                   <span
                     style={{
@@ -158,7 +167,7 @@ export default function UsersListPage() {
                 </Tooltip>
               )}
             </span>
-            {user.email === CURRENT_USER.email && (
+            {user.id === session?.userId && (
               <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>you</span>
             )}
           </div>
@@ -166,12 +175,8 @@ export default function UsersListPage() {
       ),
     },
     {
-      title: sortableTitle("email"),
-      dataIndex: "email",
-    },
-    {
       title: sortableTitle("role"),
-      dataIndex: "roleId",
+      dataIndex: "role_id",
       render: (roleId: string) => (
         <Tag
           style={{
@@ -186,15 +191,23 @@ export default function UsersListPage() {
     },
     {
       title: sortableTitle("createdAt"),
-      dataIndex: "createdAt",
+      dataIndex: "created_at",
       render: formatDate,
     },
     {
       title: sortableTitle("updatedAt"),
-      dataIndex: "updatedAt",
+      dataIndex: "updated_at",
       render: formatDate,
     },
   ];
+
+  if (loading || error) {
+    return (
+      <AppShell>
+        <QueryState loading={loading} error={error} onRetry={reload} />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -205,7 +218,7 @@ export default function UsersListPage() {
           </Typography.Title>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
             Tenant Admin &amp; Super Admin only (requires manage_users) · scoped
-            to Acme Co · click a row to view, edit, reset password, or
+            to your tenant · click a row to view, edit, reset password, or
             transfer ownership
           </Typography.Text>
         </div>
@@ -220,7 +233,7 @@ export default function UsersListPage() {
 
       <div className="mb-4 flex items-center gap-2.5">
         <Input.Search
-          placeholder="Search by name or email"
+          placeholder="Search by email"
           allowClear
           style={{ width: 280 }}
           value={search}
@@ -234,11 +247,14 @@ export default function UsersListPage() {
         <SortPopoverButton sortKeys={sortKeys} onApply={setSortKeys} />
       </div>
 
-      <Table<MockUser>
+      <Table<User>
         rowKey="id"
         columns={columns}
         dataSource={filtered}
         pagination={false}
+        locale={{
+          emptyText: data?.items.length ? "No users match these filters." : "No users yet.",
+        }}
         onRow={(record) => ({
           className: "cursor-pointer",
           onClick: () => router.push(`/users/${record.id}`),

@@ -1,23 +1,46 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Form, Input, Button, Typography } from "antd";
+import { Form, Input, Button, Typography, Alert } from "antd";
 import { WarningOutlined } from "@ant-design/icons";
+import { api, ApiError, markPasswordChanged, useSession } from "../_lib/api";
+import { canManageUsers } from "../_lib/roles";
 
 // Full-screen interstitial gating entry to the app shell when
 // TokenPair.must_change_password is true. "Skip for now" is a legitimate
 // exit, not a bug — REQUIREMENT.md/FEATURES.md: the flag "encourages, but
 // does not enforce."
-// ponytail: submit is mocked — real pass wires this to
-// POST /api/v1/users/me/password and clears the flag from session state.
 export default function ChangePasswordPage() {
   const router = useRouter();
+  const session = useSession();
   const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const onFinish = () => {
-    router.push("/users");
+  useEffect(() => {
+    if (session === null) router.replace("/login");
+  }, [session, router]);
+
+  const home = canManageUsers(session?.roleId) ? "/users" : "/";
+
+  const onFinish = async (values: { password: string }) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api("/api/v1/users/me/password", {
+        method: "POST",
+        body: JSON.stringify({ password: values.password }),
+      });
+      markPasswordChanged();
+      router.push(home);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
+      setSaving(false);
+    }
   };
+
+  if (!session) return null;
 
   return (
     <div
@@ -45,6 +68,8 @@ export default function ChangePasswordPage() {
           Your administrator requires a new password before you continue,
           since this is a first login or an admin-assigned reset.
         </Typography.Text>
+
+        {error && <Alert type="error" title={error} showIcon className="mb-4 w-full text-left" />}
 
         <Form form={form} layout="vertical" onFinish={onFinish} className="w-full text-left">
           <Form.Item
@@ -77,11 +102,11 @@ export default function ChangePasswordPage() {
             <Input.Password placeholder="••••••••" />
           </Form.Item>
           <Form.Item style={{ marginBottom: 8 }}>
-            <Button type="primary" htmlType="submit" block>
+            <Button type="primary" htmlType="submit" block loading={saving}>
               Set new password and continue
             </Button>
           </Form.Item>
-          <Button type="text" block onClick={() => router.push("/users")}>
+          <Button type="text" block onClick={() => router.push(home)}>
             Skip for now
           </Button>
         </Form>

@@ -18,6 +18,12 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## Backend API
+
+The app talks to the Guest Management backend. The browser calls `/api/v1/*` on this origin and `next.config.ts` proxies it to `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8080`), because the backend sends no CORS headers. The variable is read when the server starts (`bun dev` / `bun run build`).
+
+`make check` runs lint, the unit tests (`bun test`), and the production build.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

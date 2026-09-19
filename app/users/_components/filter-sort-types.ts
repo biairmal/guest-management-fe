@@ -1,14 +1,14 @@
 // Shared types for the User List's Filter/Sort toolbar (DESIGN_SYSTEM.md §4
-// generic pattern, §7 applied to exactly these 5 User List fields). Kept
-// users-local (not app/_components/) since no other list exists yet to
-// justify a shared abstraction — promote if/when a second list needs it.
+// generic pattern, §7 applied to the User List fields). Kept users-local
+// (not app/_components/) since no other list exists yet to justify a shared
+// abstraction — promote if/when a second list needs it.
+// No Name field: the backend User has no name, so email stands in for it.
 
-export type UserField = "name" | "email" | "role" | "createdAt" | "updatedAt";
+export type UserField = "email" | "role" | "createdAt" | "updatedAt";
 
-export const FIELDS: UserField[] = ["name", "email", "role", "createdAt", "updatedAt"];
+export const FIELDS: UserField[] = ["email", "role", "createdAt", "updatedAt"];
 
 export const FIELD_LABELS: Record<UserField, string> = {
-  name: "Name",
   email: "Email",
   role: "Role",
   createdAt: "Created date",
@@ -18,7 +18,6 @@ export const FIELD_LABELS: Record<UserField, string> = {
 export type FieldKind = "text" | "enum" | "date";
 
 export const FIELD_KIND: Record<UserField, FieldKind> = {
-  name: "text",
   email: "text",
   role: "enum",
   createdAt: "date",

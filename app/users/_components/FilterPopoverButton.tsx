@@ -21,7 +21,7 @@ type Props = {
 };
 
 function newCondition(): FilterCondition {
-  return { id: newId("f"), field: "name", operator: "contains", value: "" };
+  return { id: newId("f"), field: "email", operator: "contains", value: "" };
 }
 
 // Filter builder — Popover + custom addable/removable condition rows,
@@ -146,8 +146,8 @@ export default function FilterPopoverButton({ conditions, onApply, roleOptions }
         Add condition
       </Button>
       <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 10 }}>
-        Field options: Name, Email, Role, Created date, Updated date — operator set depends on
-        field type (contains/is for Name/Email/Role, &gt;/&lt;/between for the two date fields).
+        Field options: Email, Role, Created date, Updated date — operator set depends on
+        field type (contains/is for Email/Role, &gt;/&lt;/between for the two date fields).
       </div>
       <div
         style={{

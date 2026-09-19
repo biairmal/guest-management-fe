@@ -1,22 +1,36 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Typography, Card, Form, Input, Select, Button } from "antd";
+import { Typography, Card, Form, Input, Select, Button, Alert } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import AppShell from "../../_components/AppShell";
-import { ROLES } from "../../_lib/mock-data";
+import { api, ApiError, type User } from "../../_lib/api";
+import { ROLES } from "../../_lib/roles";
 
 // Email/Password/Role only — no tenant-master field. Tenant master is only
 // ever assigned through the (not-yet-built) tenant-management feature, never
 // at ordinary user creation, per DEVELOPMENT_PLAN.md B11's API grounding.
-// ponytail: submit is mocked — real pass wires this to POST /api/v1/users.
+// tenant_id isn't sent: the backend takes it from the caller's JWT.
 export default function CreateUserPage() {
   const router = useRouter();
   const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const onFinish = () => {
-    router.push("/users");
+  const onFinish = async (values: { email: string; password: string; roleId: string }) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const user = await api<User>("/api/v1/users", {
+        method: "POST",
+        body: JSON.stringify({ email: values.email, password: values.password, role_id: values.roleId }),
+      });
+      router.push(`/users/${user.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
+      setSaving(false);
+    }
   };
 
   return (
@@ -39,6 +53,7 @@ export default function CreateUserPage() {
         </Typography.Text>
 
         <Card>
+          {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 20 }} />}
           <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false}>
             <Form.Item
               name="email"
@@ -76,7 +91,7 @@ export default function CreateUserPage() {
               style={{ borderTop: "1px solid var(--color-border)" }}
             >
               <Button onClick={() => router.push("/users")}>Cancel</Button>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" loading={saving}>
                 Create user
               </Button>
             </div>

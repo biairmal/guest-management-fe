@@ -18,7 +18,7 @@ type Props = {
 };
 
 function newSortKey(): SortKey {
-  return { id: newId("s"), field: "name", direction: "asc" };
+  return { id: newId("s"), field: "email", direction: "asc" };
 }
 
 // Multi-sort builder — Popover + custom addable/removable/reorderable rows,

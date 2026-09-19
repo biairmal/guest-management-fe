@@ -18,7 +18,8 @@ import {
   SunOutlined,
   MoonOutlined,
 } from "@ant-design/icons";
-import { CURRENT_USER, initials, roleName } from "../_lib/mock-data";
+import { clearSession, useSession } from "../_lib/api";
+import { canManageUsers, roleName } from "../_lib/roles";
 import { useThemeMode } from "./ThemeModeProvider";
 import ChangeMyPasswordModal from "./ChangeMyPasswordModal";
 
@@ -75,6 +76,11 @@ export default function AppShell({ children }: React.PropsWithChildren) {
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [apiVersion, setApiVersion] = useState<string | null>(null);
   const { mode, toggle } = useThemeMode();
+  const session = useSession();
+
+  useEffect(() => {
+    if (session === null) router.replace("/login");
+  }, [session, router]);
 
   useEffect(() => {
     const base = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -91,10 +97,17 @@ export default function AppShell({ children }: React.PropsWithChildren) {
     };
   }, []);
 
+  // Nothing renders until the session is known; null redirects above.
+  if (!session) return null;
+
   const handleMenuClick: MenuProps["onClick"] = ({ key }) => {
     const route = NAV_ROUTES[key];
     if (route) router.push(route);
   };
+
+  const visibleMenuItems = canManageUsers(session.roleId)
+    ? menuItems
+    : menuItems.filter((item) => item.key !== "users");
 
   const userDropdownItems: MenuProps["items"] = [
     {
@@ -102,10 +115,9 @@ export default function AppShell({ children }: React.PropsWithChildren) {
       disabled: true,
       label: (
         <div style={{ lineHeight: 1.4 }}>
-          <div style={{ fontWeight: 600 }}>{CURRENT_USER.email}</div>
+          <div style={{ fontWeight: 600 }}>{session.email}</div>
           <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-            {roleName(CURRENT_USER.roleId)}
-            {CURRENT_USER.isTenantMaster ? " · Tenant master" : ""}
+            {roleName(session.roleId)}
           </div>
         </div>
       ),
@@ -121,9 +133,11 @@ export default function AppShell({ children }: React.PropsWithChildren) {
       key: "logout",
       icon: <LogoutOutlined />,
       label: "Log out",
-      // ponytail: mock logout, no token to clear yet — real auth/session
-      // plumbing pass wires this to actually clear the token pair.
-      onClick: () => router.push("/login"),
+      // No logout endpoint: tokens are stateless JWTs, so dropping them is it.
+      onClick: () => {
+        clearSession();
+        router.push("/login");
+      },
     },
   ];
 
@@ -154,10 +168,10 @@ export default function AppShell({ children }: React.PropsWithChildren) {
           <Dropdown menu={{ items: userDropdownItems }} trigger={["click"]}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
               <Avatar size={28} style={{ background: "var(--color-primary)", fontSize: 12 }}>
-                {initials(CURRENT_USER.email)}
+                {session.email.slice(0, 1).toUpperCase()}
               </Avatar>
               <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
-                {CURRENT_USER.email}
+                {session.email}
               </span>
             </div>
           </Dropdown>
@@ -176,7 +190,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
             selectedKeys={selectedKeyFor(pathname)}
             defaultOpenKeys={["events", "events-configuration"]}
             style={{ height: "100%", borderRight: 0 }}
-            items={menuItems}
+            items={visibleMenuItems}
             onClick={handleMenuClick}
           />
         </Sider>
@@ -192,6 +206,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
       <ChangeMyPasswordModal
         open={changePasswordOpen}
         onClose={() => setChangePasswordOpen(false)}
+        email={session.email}
       />
     </Layout>
   );
