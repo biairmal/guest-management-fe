@@ -20,24 +20,25 @@ import {
 } from "@ant-design/icons";
 import { initials, roleName } from "../_lib/users";
 import { getSession, logout, useSession } from "../_lib/api";
+import { confirmLeave } from "../_lib/leave-guard";
 import { useThemeMode } from "./ThemeModeProvider";
 import ChangeMyPasswordModal from "./ChangeMyPasswordModal";
 
 const { Header, Sider, Content, Footer } = Layout;
 
-// Routes that actually exist in this UI-only pass — everything else in the
-// nav (including every "Events" child below) is the pre-existing scaffold's
-// placeholder list (no route to send it to yet), same as before — this pass
-// only adds visual nesting/expand-collapse, not new pages.
+// Routes that exist so far — every other nav item is still a placeholder
+// with no page to send it to.
 const NAV_ROUTES: Record<string, string> = {
   dashboard: "/",
   users: "/users",
+  "events-configuration-categories": "/events/configuration/categories",
 };
 
-// DESIGN_SYSTEM.md §2 — 3-level nesting example (Events -> Transactions /
-// Configuration -> Category / Ticket Template), same one Menu instance/Sider
-// driving both expanded (inline children) and collapsed (hover flyout,
-// antd's built-in inline-collapsed popup) states.
+// DESIGN_SYSTEM.md §2 — 3-level nesting (Events -> Transactions /
+// Configuration -> Categories), same one Menu instance/Sider driving both
+// expanded (inline children) and collapsed (hover flyout, antd's built-in
+// inline-collapsed popup) states. Ticket-type templates live inside a
+// category's page, so there is no separate "Ticket Template" item.
 const menuItems = [
   { key: "dashboard", icon: <DashboardOutlined />, label: "Dashboard" },
   {
@@ -49,10 +50,7 @@ const menuItems = [
       {
         key: "events-configuration",
         label: "Configuration",
-        children: [
-          { key: "events-configuration-category", label: "Category" },
-          { key: "events-configuration-ticket-template", label: "Ticket Template" },
-        ],
+        children: [{ key: "events-configuration-categories", label: "Categories" }],
       },
     ],
   },
@@ -67,6 +65,7 @@ const menuItems = [
 function selectedKeyFor(pathname: string): string[] {
   if (pathname === "/") return ["dashboard"];
   if (pathname.startsWith("/users")) return ["users"];
+  if (pathname.startsWith("/events/configuration/categories")) return ["events-configuration-categories"];
   return [];
 }
 
@@ -99,9 +98,9 @@ export default function AppShell({ children }: React.PropsWithChildren) {
     };
   }, []);
 
-  const handleMenuClick: MenuProps["onClick"] = ({ key }) => {
+  const handleMenuClick: MenuProps["onClick"] = async ({ key }) => {
     const route = NAV_ROUTES[key];
-    if (route) router.push(route);
+    if (route && (await confirmLeave())) router.push(route);
   };
 
   const userDropdownItems: MenuProps["items"] = [

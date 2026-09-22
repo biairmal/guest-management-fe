@@ -43,6 +43,9 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    // Per-field validation messages from the error envelope's meta.fields,
+    // keyed by field name or JSON path (e.g. "ticket_types[1].name").
+    public fields?: Record<string, string>,
   ) {
     super(message);
   }
@@ -115,7 +118,13 @@ async function request<T>(path: string, init: RequestInit, token?: string): Prom
   }
   const body = await res.json().catch(() => null);
   log({ status: res.status, response: body });
-  if (!res.ok) throw new ApiError(res.status, body?.error?.message ?? body?.message ?? res.statusText);
+  if (!res.ok) {
+    throw new ApiError(
+      res.status,
+      body?.error?.message ?? body?.message ?? res.statusText,
+      body?.error?.meta?.fields,
+    );
+  }
   return body.data as T;
 }
 

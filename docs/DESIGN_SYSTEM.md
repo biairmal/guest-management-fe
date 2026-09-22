@@ -22,6 +22,8 @@ Direction D ("Full Dark Elevated"): elevation built from stepped surfaces, not s
 | Accent tint | `rgba(45,212,191,0.14)` | `rgba(15,118,110,0.10)` |
 | Danger | `#FF7875` (outline style on dark) | `#FF4D4F` (solid fill on light) |
 | Warning | `#E8B339` | `#D48806` (reuses the app's existing gold tag color) |
+| Danger text (inline field/row errors, error status text) | `#FF7875` | `#CF1322` (`#FF4D4F` is under 4.5:1 as text on chrome/pop; keep it for fills, borders, icons) |
+| Warning text (inline non-blocking warnings) | `#E8B339` | `#AD6800` (`#D48806` is under 4.5:1 as text on light surfaces) |
 | Elevation shadow (modals only) | `0 12px 28px rgba(0,0,0,0.45)` | `0 12px 28px rgba(16,24,40,0.14)` |
 
 Rule of thumb when adding a new surface: which of the three steps does it sit at (canvas / chrome / pop)? Pick that step's hex for the active theme — don't invent a fourth gray.
@@ -45,8 +47,7 @@ Extends the real `app/_components/AppShell.tsx` (`Layout.Sider collapsible colla
       key: "events-configuration",
       label: "Configuration",
       children: [
-        { key: "events-configuration-category", label: "Category" },
-        { key: "events-configuration-ticket-template", label: "Ticket Template" },
+        { key: "events-configuration-categories", label: "Categories" },
       ],
     },
   ],
@@ -56,7 +57,7 @@ Extends the real `app/_components/AppShell.tsx` (`Layout.Sider collapsible colla
 States to support (all one `Menu` instance, no separate components):
 - **Expanded** — full-width rail (220–240px), nested children indent under an expanded parent, active leaf gets the primary tint background + bold `primary`-colored text (see token table).
 - **Collapsed to icons** — `Sider` at `collapsedWidth={80}`, labels hidden, hovering a parent with children opens antd `Menu`'s built-in floating submenu popup (not a custom overlay) showing the same nested structure.
-- **Submenu open** — a parent (e.g. "Events") expanded inline, its children visible; a child can itself be a parent (e.g. "Configuration" → "Category"/"Ticket Template"), so nesting must support at least 3 levels, not just one.
+- **Submenu open** — a parent (e.g. "Events") expanded inline, its children visible; a child can itself be a parent (e.g. "Configuration" → "Categories"), so nesting must support at least 3 levels, not just one.
 
 ## 3. Breadcrumb / back-navigation pattern
 

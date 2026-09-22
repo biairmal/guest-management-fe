@@ -24,6 +24,8 @@
   --color-accent-tint: rgba(15, 118, 110, 0.10);
   --color-danger: #FF4D4F;
   --color-warning: #D48806;
+  --color-danger-text: #CF1322;
+  --color-warning-text: #AD6800;
   --shadow-elevation: 0 12px 28px rgba(16, 24, 40, 0.14);
   --nav-active-rail: none;
 
@@ -45,6 +47,8 @@
   --color-accent-tint: rgba(45, 212, 191, 0.14);
   --color-danger: #FF7875;
   --color-warning: #E8B339;
+  --color-danger-text: #FF7875;
+  --color-warning-text: #E8B339;
   --shadow-elevation: 0 12px 28px rgba(0, 0, 0, 0.45);
   --nav-active-rail: inset 3px 0 0 var(--color-primary-text);
 
