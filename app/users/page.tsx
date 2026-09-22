@@ -1,68 +1,62 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Typography, Button, Input, Table, Tag, Tooltip } from "antd";
+import { Typography, Button, Table, Tag, Tooltip, Alert } from "antd";
 import type { TableColumnsType } from "antd";
 import { PlusOutlined, ArrowUpOutlined, ArrowDownOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import AppShell from "../_components/AppShell";
-import { CURRENT_USER, MOCK_USERS, ROLES, MockUser, roleName } from "../_lib/mock-data";
-import FilterPopoverButton from "./_components/FilterPopoverButton";
-import SortPopoverButton from "./_components/SortPopoverButton";
+import FilterPopoverButton from "../_components/FilterPopoverButton";
+import SortPopoverButton from "../_components/SortPopoverButton";
+import { ROLES, roleName, type User } from "../_lib/users";
+import { api, useSession, type Page } from "../_lib/api";
 import {
-  FIELD_LABELS,
   newId,
+  toListQuery,
   type FilterCondition,
+  type FilterField,
+  type SortField,
   type SortKey,
-  type UserField,
-} from "./_components/filter-sort-types";
+} from "../_lib/list-query";
 
-function fieldValue(user: MockUser, field: UserField): string {
-  if (field === "role") return roleName(user.roleId);
-  return user[field];
-}
+// This page's Filter/Sort config — must stay within GET /api/v1/users'
+// allow-lists (guest-management-be UserListConfig). Every field is exact
+// match only; add "like" to a field's operators to offer "contains" too.
+const FILTER_FIELDS: FilterField[] = [
+  { key: "email", label: "Email", operators: ["eq"] },
+  {
+    key: "role_id",
+    label: "Role",
+    operators: ["eq"],
+    options: ROLES.map((r) => ({ value: r.id, label: r.name })),
+  },
+  {
+    key: "is_tenant_master",
+    label: "Tenant master",
+    operators: ["eq"],
+    options: [
+      { value: "true", label: "Yes" },
+      { value: "false", label: "No" },
+    ],
+  },
+];
 
-function matchesCondition(user: MockUser, cond: FilterCondition): boolean {
-  if (cond.field === "role") {
-    if (!cond.value) return true;
-    const isMatch = user.roleId === cond.value;
-    return cond.operator === "is_not" ? !isMatch : isMatch;
-  }
-  if (cond.field === "createdAt" || cond.field === "updatedAt") {
-    const raw = dayjs(user[cond.field]);
-    if (cond.operator === "between") {
-      if (!cond.value || !cond.value2) return true;
-      return !raw.isBefore(dayjs(cond.value), "day") && !raw.isAfter(dayjs(cond.value2), "day");
-    }
-    if (!cond.value) return true;
-    const target = dayjs(cond.value);
-    return cond.operator === "gt" ? raw.isAfter(target, "day") : raw.isBefore(target, "day");
-  }
-  // name / email — text contains|is
-  const raw = user[cond.field].toLowerCase();
-  const val = cond.value.trim().toLowerCase();
-  if (!val) return true;
-  return cond.operator === "is" ? raw === val : raw.includes(val);
-}
+const SORT_FIELDS: SortField[] = [
+  { key: "email", label: "Email" },
+  { key: "role_id", label: "Role" },
+  { key: "created_at", label: "Created date" },
+  { key: "updated_at", label: "Updated date" },
+];
 
-function sortUsers(users: MockUser[], keys: SortKey[]): MockUser[] {
-  if (!keys.length) return users;
-  return [...users].sort((a, b) => {
-    for (const key of keys) {
-      const cmp = fieldValue(a, key.field).localeCompare(fieldValue(b, key.field));
-      if (cmp !== 0) return key.direction === "asc" ? cmp : -cmp;
-    }
-    return 0;
-  });
-}
+const PAGE_SIZE = 20;
 
 function formatDate(iso: string): string {
   return dayjs(iso).format("MMM D, YYYY");
 }
 
-// Table bound to mock rows shaped like GET /api/v1/users — real pass swaps
-// dataSource for a fetch against the `?page&size&sort&email=` query shape.
+// Table over GET /api/v1/users — filtering, sorting and paging all happen
+// server-side via toListQuery.
 // View-only: no action column, no inline row actions — the whole row is a
 // link to the user's detail page (per the product-direction amendment).
 // Column set + Filter/Sort toolbar per DEVELOPMENT_PLAN.md B11 §7 /
@@ -70,64 +64,86 @@ function formatDate(iso: string): string {
 // per-column filter/sorter (§4's rationale: only one field at a time).
 export default function UsersListPage() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
+  const session = useSession();
+  const [result, setResult] = useState<Page<User> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
   const [sortKeys, setSortKeys] = useState<SortKey[]>([
-    { id: newId("s"), field: "name", direction: "asc" },
+    { id: newId("s"), field: "email", direction: "asc" },
   ]);
 
-  const roleOptions = ROLES.map((r) => ({ value: r.id, label: r.name }));
+  useEffect(() => {
+    let cancelled = false;
+    api<Page<User>>(`/users?${toListQuery(page, PAGE_SIZE, conditions, sortKeys)}`)
+      .then((res) => {
+        if (cancelled) return;
+        setResult(res);
+        setLoadError(null);
+      })
+      .catch((e: Error) => !cancelled && setLoadError(e.message))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [page, conditions, sortKeys]);
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const rows = MOCK_USERS.filter((u) => {
-      const matchesSearch =
-        !term || u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term);
-      return matchesSearch && conditions.every((c) => matchesCondition(u, c));
-    });
-    return sortUsers(rows, sortKeys);
-  }, [search, conditions, sortKeys]);
+  // Any query change starts back at page 1 and shows the spinner.
+  const applyConditions = (next: FilterCondition[]) => {
+    setLoading(true);
+    setPage(1);
+    setConditions(next);
+  };
+  const applySortKeys = (next: SortKey[]) => {
+    setLoading(true);
+    setPage(1);
+    setSortKeys(next);
+  };
 
   // Table header sort affordance is presentational — the badge-count Sort
   // button/popover above remains the actual source of truth for multi-key
   // ordering (DESIGN_SYSTEM.md §7), this just lets a header click promote a
   // field to the top sort key as a convenience shortcut.
-  const topSortDirectionFor = (field: UserField) =>
+  const topSortDirectionFor = (field: string) =>
     sortKeys[0]?.field === field ? sortKeys[0].direction : undefined;
 
-  const promoteSortField = (field: UserField) => {
-    setSortKeys((keys) => {
-      const current = keys[0];
-      if (current?.field === field) {
-        const rest = keys.slice(1);
-        return [{ ...current, direction: current.direction === "asc" ? "desc" : "asc" }, ...rest];
-      }
-      const rest = keys.filter((k) => k.field !== field);
-      return [{ id: newId("s"), field, direction: "asc" }, ...rest];
-    });
+  const promoteSortField = (field: string) => {
+    const current = sortKeys[0];
+    if (current?.field === field) {
+      applySortKeys([
+        { ...current, direction: current.direction === "asc" ? "desc" : "asc" },
+        ...sortKeys.slice(1),
+      ]);
+      return;
+    }
+    applySortKeys([
+      { id: newId("s"), field, direction: "asc" },
+      ...sortKeys.filter((k) => k.field !== field),
+    ]);
   };
 
-  const sortableTitle = (field: UserField) => {
+  const sortableTitle = (field: string) => {
     const dir = topSortDirectionFor(field);
     return (
       <span
         style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer" }}
         onClick={() => promoteSortField(field)}
       >
-        {FIELD_LABELS[field]}
+        {SORT_FIELDS.find((f) => f.key === field)?.label}
         {dir === "asc" && <ArrowUpOutlined style={{ fontSize: 11, color: "var(--color-primary-text)" }} />}
         {dir === "desc" && <ArrowDownOutlined style={{ fontSize: 11, color: "var(--color-primary-text)" }} />}
       </span>
     );
   };
 
-  const columns: TableColumnsType<MockUser> = [
+  const columns: TableColumnsType<User> = [
     {
-      title: sortableTitle("name"),
-      dataIndex: "name",
-      render: (name: string, user) => (
+      title: sortableTitle("email"),
+      dataIndex: "email",
+      render: (email: string, user) => (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {user.isTenantMaster && (
+          {user.is_tenant_master && (
             <Tooltip title="Tenant master">
               <span
                 style={{
@@ -142,8 +158,8 @@ export default function UsersListPage() {
           )}
           <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.3 }}>
             <span>
-              {name}
-              {user.mustChangePassword && (
+              {email}
+              {user.must_change_password && (
                 <Tooltip title="Must change password">
                   <span
                     style={{
@@ -158,7 +174,7 @@ export default function UsersListPage() {
                 </Tooltip>
               )}
             </span>
-            {user.email === CURRENT_USER.email && (
+            {user.id === session?.userId && (
               <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>you</span>
             )}
           </div>
@@ -166,12 +182,8 @@ export default function UsersListPage() {
       ),
     },
     {
-      title: sortableTitle("email"),
-      dataIndex: "email",
-    },
-    {
-      title: sortableTitle("role"),
-      dataIndex: "roleId",
+      title: sortableTitle("role_id"),
+      dataIndex: "role_id",
       render: (roleId: string) => (
         <Tag
           style={{
@@ -185,13 +197,13 @@ export default function UsersListPage() {
       ),
     },
     {
-      title: sortableTitle("createdAt"),
-      dataIndex: "createdAt",
+      title: sortableTitle("created_at"),
+      dataIndex: "created_at",
       render: formatDate,
     },
     {
-      title: sortableTitle("updatedAt"),
-      dataIndex: "updatedAt",
+      title: sortableTitle("updated_at"),
+      dataIndex: "updated_at",
       render: formatDate,
     },
   ];
@@ -205,7 +217,7 @@ export default function UsersListPage() {
           </Typography.Title>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
             Tenant Admin &amp; Super Admin only (requires manage_users) · scoped
-            to Acme Co · click a row to view, edit, reset password, or
+            to your tenant · click a row to view, edit, reset password, or
             transfer ownership
           </Typography.Text>
         </div>
@@ -219,26 +231,29 @@ export default function UsersListPage() {
       </div>
 
       <div className="mb-4 flex items-center gap-2.5">
-        <Input.Search
-          placeholder="Search by name or email"
-          allowClear
-          style={{ width: 280 }}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <FilterPopoverButton
-          conditions={conditions}
-          onApply={setConditions}
-          roleOptions={roleOptions}
-        />
-        <SortPopoverButton sortKeys={sortKeys} onApply={setSortKeys} />
+        <FilterPopoverButton fields={FILTER_FIELDS} conditions={conditions} onApply={applyConditions} />
+        <SortPopoverButton fields={SORT_FIELDS} sortKeys={sortKeys} onApply={applySortKeys} />
       </div>
 
-      <Table<MockUser>
+      {loadError && (
+        <Alert type="error" showIcon title={loadError} style={{ marginBottom: 16 }} />
+      )}
+
+      <Table<User>
         rowKey="id"
         columns={columns}
-        dataSource={filtered}
-        pagination={false}
+        dataSource={result?.items ?? []}
+        loading={loading}
+        pagination={{
+          current: page,
+          pageSize: PAGE_SIZE,
+          total: result?.total ?? 0,
+          showSizeChanger: false,
+          onChange: (next) => {
+            setLoading(true);
+            setPage(next);
+          },
+        }}
         onRow={(record) => ({
           className: "cursor-pointer",
           onClick: () => router.push(`/users/${record.id}`),

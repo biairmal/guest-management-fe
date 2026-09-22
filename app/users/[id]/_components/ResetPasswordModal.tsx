@@ -1,12 +1,15 @@
 "use client";
 
-import React from "react";
-import { Modal, Alert, Form, Input, Typography } from "antd";
+import React, { useState } from "react";
+import { App, Modal, Alert, Form, Input, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
+import { api } from "../../../_lib/api";
 
 type Props = {
   open: boolean;
   onClose: () => void;
+  onDone: () => void;
+  targetId: string;
   targetEmail: string;
 };
 
@@ -23,14 +26,24 @@ function generateTempPassword(): string {
 // Admin resetting *someone else's* password — POST /api/v1/users/{id}/password.
 // Deliberately a separate component/handler from the self-service
 // ChangeMyPasswordModal, per the Technical Design's explicit split.
-// ponytail: submit just closes the modal, no API call yet (UI-only pass).
-export default function ResetPasswordModal({ open, onClose, targetEmail }: Props) {
+export default function ResetPasswordModal({ open, onClose, onDone, targetId, targetEmail }: Props) {
   const [form] = Form.useForm();
+  const { message } = App.useApp();
+  const [loading, setLoading] = useState(false);
 
-  const handleOk = () => {
-    form.validateFields().then(() => {
+  const handleOk = async () => {
+    const { password } = await form.validateFields();
+    setLoading(true);
+    try {
+      await api(`/users/${targetId}/password`, { method: "POST", body: JSON.stringify({ password }) });
+      message.success(`Password reset for ${targetEmail}`);
       onClose();
-    });
+      onDone();
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -38,6 +51,7 @@ export default function ResetPasswordModal({ open, onClose, targetEmail }: Props
       title={`Reset password — ${targetEmail}`}
       open={open}
       onOk={handleOk}
+      confirmLoading={loading}
       onCancel={onClose}
       okText="Reset password"
       afterOpenChange={(isOpen) => {
@@ -62,7 +76,10 @@ export default function ResetPasswordModal({ open, onClose, targetEmail }: Props
         <Form.Item
           name="password"
           label="New temporary password"
-          rules={[{ required: true, message: "A temporary password is required" }]}
+          rules={[
+            { required: true, message: "A temporary password is required" },
+            { min: 8, message: "Minimum 8 characters" },
+          ]}
           extra={`Minimum 8 characters. Share this with ${targetEmail} through a separate, secure channel.`}
         >
           <Input

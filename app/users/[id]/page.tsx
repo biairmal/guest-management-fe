@@ -1,31 +1,81 @@
 "use client";
 
-import React, { use, useState } from "react";
+import React, { use, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Typography, Card, Avatar, Tag, Form, Input, Select, Button, Divider } from "antd";
+import { Alert, App, Typography, Card, Avatar, Tag, Form, Input, Select, Button, Divider } from "antd";
 import AppShell from "../../_components/AppShell";
 import PageHeader from "../../_components/PageHeader";
 import ResetPasswordModal from "./_components/ResetPasswordModal";
 import TransferMasterModal from "./_components/TransferMasterModal";
 import DeleteUserModal from "./_components/DeleteUserModal";
-import { CURRENT_USER, MOCK_USERS, ROLES, initials, roleName } from "../../_lib/mock-data";
+import { ROLES, initials, roleName, type User } from "../../_lib/users";
+import { api, getSession } from "../../_lib/api";
 
 // GET /api/v1/users/{id} to load; editable Email/Role against PUT
 // /api/v1/users/{id} (no password field — that endpoint doesn't take one).
-// ponytail: `id` looks up MOCK_USERS in-memory instead of fetching; falls
-// back to the first mock user if the id isn't found (any static id works
-// for this UI-only pass since there's no real list-to-detail handoff yet).
+// The signed-in user is loaded too, because whether they are the tenant
+// master (which gates the transfer action) is not a JWT claim.
 export default function UserDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const user = MOCK_USERS.find((u) => u.id === id) ?? MOCK_USERS[0];
+  const { message } = App.useApp();
 
-  const [form] = Form.useForm();
+  const [user, setUser] = useState<User | null>(null);
+  const [me, setMe] = useState<User | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const transferCandidates = MOCK_USERS.filter((u) => u.id !== CURRENT_USER.id);
+  const load = useCallback(
+    () =>
+      Promise.all([api<User>(`/users/${id}`), api<User>(`/users/${getSession()?.userId}`)])
+        .then(([u, self]) => {
+          setUser(u);
+          setMe(self);
+        })
+        .catch((e: Error) => setLoadError(e.message)),
+    [id],
+  );
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const meId = me?.id;
+  const iAmMaster = !!me?.is_tenant_master;
+
+  const save = async (values: { email: string; roleId: string }) => {
+    setSaving(true);
+    try {
+      await api(`/users/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ email: values.email, role_id: values.roleId }),
+      });
+      message.success("User updated");
+      router.push("/users");
+    } catch (e) {
+      setSaving(false);
+      message.error((e as Error).message);
+    }
+  };
+
+  const remove = async () => {
+    await api(`/users/${id}`, { method: "DELETE" });
+    message.success(`Deleted ${user?.email}`);
+    router.push("/users");
+  };
+
+  if (!user) {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-[760px]">
+          {loadError ? <Alert type="error" showIcon title={loadError} /> : <Card loading />}
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -47,8 +97,8 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
             <div>
               <div className="mb-1.5 text-lg font-semibold">{user.email}</div>
               <div className="flex flex-wrap gap-1.5">
-                <Tag color="var(--color-primary)">{roleName(user.roleId)}</Tag>
-                {user.mustChangePassword && <Tag color="warning">Must change password</Tag>}
+                <Tag color="var(--color-primary)">{roleName(user.role_id)}</Tag>
+                {user.must_change_password &&<Tag color="warning">Must change password</Tag>}
               </div>
             </div>
           </div>
@@ -67,11 +117,11 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
           </Typography.Text>
 
           <Form
-            form={form}
+            key={user.updated_at}
             layout="vertical"
             style={{ marginTop: 16, maxWidth: 360 }}
-            initialValues={{ email: user.email, roleId: user.roleId }}
-            onFinish={() => router.push("/users")}
+            initialValues={{ email: user.email, roleId: user.role_id }}
+            onFinish={save}
           >
             <Form.Item
               name="email"
@@ -96,15 +146,15 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
               extra='Not editable here — use "Transfer tenant master to this user" below, which runs inside a transaction to keep exactly one master per tenant.'
             >
               <div>
-                <Tag color={user.isTenantMaster ? "gold" : "default"}>
-                  {user.isTenantMaster ? "Master" : "Not master"}
+                <Tag color={user.is_tenant_master ? "gold" : "default"}>
+                  {user.is_tenant_master ? "Master" : "Not master"}
                 </Tag>
               </div>
             </Form.Item>
 
             <div className="mt-2 flex justify-end gap-2">
               <Button onClick={() => router.push("/users")}>Cancel</Button>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" loading={saving}>
                 Save changes
               </Button>
             </div>
@@ -140,7 +190,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
             <Button onClick={() => setResetOpen(true)}>Reset password</Button>
           </div>
 
-          {CURRENT_USER.isTenantMaster && (
+          {iAmMaster && user.id !== meId && (
             <div className="flex items-center justify-between py-3.5">
               <div>
                 <div className="text-sm font-medium">
@@ -187,17 +237,21 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
       <ResetPasswordModal
         open={resetOpen}
         onClose={() => setResetOpen(false)}
+        onDone={load}
+        targetId={user.id}
         targetEmail={user.email}
       />
       <TransferMasterModal
         open={transferOpen}
         onClose={() => setTransferOpen(false)}
-        candidates={transferCandidates}
+        onDone={load}
+        defaultTarget={user}
+        selfId={meId}
       />
       <DeleteUserModal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        onConfirm={() => router.push("/users")}
+        onConfirm={remove}
         targetEmail={user.email}
       />
     </AppShell>

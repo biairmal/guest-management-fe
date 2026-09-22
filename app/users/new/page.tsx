@@ -1,22 +1,36 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Typography, Card, Form, Input, Select, Button } from "antd";
+import { App, Typography, Card, Form, Input, Select, Button } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import AppShell from "../../_components/AppShell";
-import { ROLES } from "../../_lib/mock-data";
+import { ROLES } from "../../_lib/users";
+import { api } from "../../_lib/api";
 
 // Email/Password/Role only — no tenant-master field. Tenant master is only
 // ever assigned through the (not-yet-built) tenant-management feature, never
 // at ordinary user creation, per DEVELOPMENT_PLAN.md B11's API grounding.
-// ponytail: submit is mocked — real pass wires this to POST /api/v1/users.
+// Submits POST /api/v1/users.
 export default function CreateUserPage() {
   const router = useRouter();
   const [form] = Form.useForm();
+  const { message } = App.useApp();
+  const [loading, setLoading] = useState(false);
 
-  const onFinish = () => {
-    router.push("/users");
+  const onFinish = async (values: { email: string; password: string; roleId: string }) => {
+    setLoading(true);
+    try {
+      await api("/users", {
+        method: "POST",
+        body: JSON.stringify({ email: values.email, password: values.password, role_id: values.roleId }),
+      });
+      message.success(`Created ${values.email}`);
+      router.push("/users");
+    } catch (e) {
+      setLoading(false);
+      message.error((e as Error).message);
+    }
   };
 
   return (
@@ -76,7 +90,7 @@ export default function CreateUserPage() {
               style={{ borderTop: "1px solid var(--color-border)" }}
             >
               <Button onClick={() => router.push("/users")}>Cancel</Button>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" loading={loading}>
                 Create user
               </Button>
             </div>

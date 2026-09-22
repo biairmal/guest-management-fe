@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { Modal, Form, Input, Typography } from "antd";
-import { CURRENT_USER } from "../_lib/mock-data";
+import React, { useState } from "react";
+import { App, Modal, Form, Input, Typography } from "antd";
+import { api, useSession } from "../_lib/api";
 
 type Props = {
   open: boolean;
@@ -10,15 +10,25 @@ type Props = {
 };
 
 // Self-service "Change my password" — POST /api/v1/users/me/password.
-// ponytail: submit just closes the modal, no API call yet (UI-only pass).
 export default function ChangeMyPasswordModal({ open, onClose }: Props) {
   const [form] = Form.useForm();
+  const { message } = App.useApp();
+  const session = useSession();
+  const [loading, setLoading] = useState(false);
 
-  const handleOk = () => {
-    form.validateFields().then(() => {
+  const handleOk = async () => {
+    const { password } = await form.validateFields();
+    setLoading(true);
+    try {
+      await api("/users/me/password", { method: "POST", body: JSON.stringify({ password }) });
+      message.success("Password updated");
       form.resetFields();
       onClose();
-    });
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -26,6 +36,7 @@ export default function ChangeMyPasswordModal({ open, onClose }: Props) {
       title="Change my password"
       open={open}
       onOk={handleOk}
+      confirmLoading={loading}
       onCancel={() => {
         form.resetFields();
         onClose();
@@ -33,7 +44,7 @@ export default function ChangeMyPasswordModal({ open, onClose }: Props) {
       okText="Save password"
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
-        Signed in as {CURRENT_USER.email}. This updates your own password
+        Signed in as {session?.email}. This updates your own password
         only — POST /api/v1/users/me/password.
       </Typography.Paragraph>
       <Form form={form} layout="vertical">

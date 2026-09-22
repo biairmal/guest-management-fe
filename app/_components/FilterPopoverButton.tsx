@@ -1,36 +1,36 @@
 "use client";
 
 import React, { useState } from "react";
-import { Popover, Button, Select, Input, DatePicker, Badge } from "antd";
+import { Popover, Button, Select, Input, Badge } from "antd";
 import { FilterOutlined, PlusOutlined, CloseOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
 import {
-  FIELDS,
-  FIELD_LABELS,
-  FIELD_KIND,
-  OPERATORS_FOR,
+  OPERATOR_LABELS,
   newId,
   type FilterCondition,
-  type UserField,
-} from "./filter-sort-types";
+  type FilterField,
+} from "../_lib/list-query";
 
 type Props = {
+  fields: FilterField[]; // the page's filterable fields and their allowed operators
   conditions: FilterCondition[];
   onApply: (conditions: FilterCondition[]) => void;
-  roleOptions: { value: string; label: string }[];
 };
 
-function newCondition(): FilterCondition {
-  return { id: newId("f"), field: "name", operator: "contains", value: "" };
+function conditionFor(field: FilterField): Omit<FilterCondition, "id"> {
+  return { field: field.key, operator: field.operators[0], value: "" };
 }
 
 // Filter builder — Popover + custom addable/removable condition rows,
-// implicitly ANDed ("Where" / "And"), scoped to the 5 User List fields
+// implicitly ANDed ("Where" / "And"), over whatever fields the page passes
 // (DESIGN_SYSTEM.md §4/§7, FilterPanelOpen.dc.html). Deliberately not
-// Table's own per-column filter dropdown — see §4's rationale.
-export default function FilterPopoverButton({ conditions, onApply, roleOptions }: Props) {
+// Table's own per-column filter dropdown — see §4's rationale. Each field
+// appears in at most one row, since list endpoints take one value per field.
+export default function FilterPopoverButton({ fields, conditions, onApply }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<FilterCondition[]>(conditions);
+
+  const fieldOf = (key: string) => fields.find((f) => f.key === key) ?? fields[0];
+  const unusedFields = fields.filter((f) => !draft.some((r) => r.field === f.key));
 
   const openPanel = (next: boolean) => {
     if (next) setDraft(conditions);
@@ -41,7 +41,8 @@ export default function FilterPopoverButton({ conditions, onApply, roleOptions }
     setDraft((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   const removeRow = (id: string) => setDraft((rows) => rows.filter((r) => r.id !== id));
-  const addRow = () => setDraft((rows) => [...rows, newCondition()]);
+  const addRow = () =>
+    setDraft((rows) => [...rows, { id: newId("f"), ...conditionFor(unusedFields[0]) }]);
 
   const apply = () => {
     onApply(draft);
@@ -55,38 +56,15 @@ export default function FilterPopoverButton({ conditions, onApply, roleOptions }
   };
 
   const valueInput = (row: FilterCondition) => {
-    const kind = FIELD_KIND[row.field];
-    if (kind === "enum") {
+    const { options } = fieldOf(row.field);
+    if (options) {
       return (
         <Select
           style={{ flex: 1 }}
           value={row.value || undefined}
           placeholder="Value"
-          options={roleOptions}
+          options={options}
           onChange={(v) => updateRow(row.id, { value: v })}
-        />
-      );
-    }
-    if (kind === "date") {
-      if (row.operator === "between") {
-        return (
-          <DatePicker.RangePicker
-            style={{ flex: 1 }}
-            value={[row.value ? dayjs(row.value) : null, row.value2 ? dayjs(row.value2) : null]}
-            onChange={(vals) =>
-              updateRow(row.id, {
-                value: vals?.[0] ? vals[0].format("YYYY-MM-DD") : "",
-                value2: vals?.[1] ? vals[1].format("YYYY-MM-DD") : "",
-              })
-            }
-          />
-        );
-      }
-      return (
-        <DatePicker
-          style={{ flex: 1 }}
-          value={row.value ? dayjs(row.value) : null}
-          onChange={(v) => updateRow(row.id, { value: v ? v.format("YYYY-MM-DD") : "" })}
         />
       );
     }
@@ -110,21 +88,19 @@ export default function FilterPopoverButton({ conditions, onApply, roleOptions }
           <Select
             style={{ width: 140 }}
             value={row.field}
-            options={FIELDS.map((f) => ({ value: f, label: FIELD_LABELS[f] }))}
-            onChange={(field: UserField) =>
-              updateRow(row.id, {
-                field,
-                operator: OPERATORS_FOR[FIELD_KIND[field]][0].value,
-                value: "",
-                value2: undefined,
-              })
-            }
+            options={fields.map((f) => ({
+              value: f.key,
+              label: f.label,
+              disabled: f.key !== row.field && draft.some((r) => r.field === f.key),
+            }))}
+            onChange={(key: string) => updateRow(row.id, conditionFor(fieldOf(key)))}
           />
           <Select
             style={{ width: 110 }}
             value={row.operator}
-            options={OPERATORS_FOR[FIELD_KIND[row.field]]}
-            onChange={(operator) => updateRow(row.id, { operator, value: "", value2: undefined })}
+            disabled={fieldOf(row.field).operators.length === 1}
+            options={fieldOf(row.field).operators.map((op) => ({ value: op, label: OPERATOR_LABELS[op] }))}
+            onChange={(operator) => updateRow(row.id, { operator })}
           />
           {valueInput(row)}
           <Button
@@ -141,14 +117,11 @@ export default function FilterPopoverButton({ conditions, onApply, roleOptions }
         size="small"
         icon={<PlusOutlined />}
         onClick={addRow}
+        disabled={unusedFields.length === 0}
         style={{ paddingLeft: 0, marginBottom: 8 }}
       >
         Add condition
       </Button>
-      <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 10 }}>
-        Field options: Name, Email, Role, Created date, Updated date — operator set depends on
-        field type (contains/is for Name/Email/Role, &gt;/&lt;/between for the two date fields).
-      </div>
       <div
         style={{
           display: "flex",

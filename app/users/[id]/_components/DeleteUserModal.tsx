@@ -1,24 +1,37 @@
 "use client";
 
-import React from "react";
-import { Modal, Alert, Typography } from "antd";
+import React, { useState } from "react";
+import { App, Modal, Alert, Typography } from "antd";
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => Promise<void>; // the DELETE call
   targetEmail: string;
 };
 
 // Reachable only from the detail page's Danger zone, never from the list —
 // DELETE /api/v1/users/{id}.
-// ponytail: onConfirm just navigates back to the list, no API call yet.
 export default function DeleteUserModal({ open, onClose, onConfirm, targetEmail }: Props) {
+  const { message } = App.useApp();
+  const [loading, setLoading] = useState(false);
+
+  const handleOk = async () => {
+    setLoading(true);
+    try {
+      await onConfirm();
+    } catch (e) {
+      setLoading(false);
+      message.error((e as Error).message);
+    }
+  };
+
   return (
     <Modal
       title="Delete user"
       open={open}
-      onOk={onConfirm}
+      onOk={handleOk}
+      confirmLoading={loading}
       onCancel={onClose}
       okText="Delete user"
       okButtonProps={{ danger: true }}

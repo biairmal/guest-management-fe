@@ -1,22 +1,34 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Form, Input, Button, Typography } from "antd";
+import { App, Form, Input, Button, Typography } from "antd";
 import { WarningOutlined } from "@ant-design/icons";
+import { api } from "../_lib/api";
 
 // Full-screen interstitial gating entry to the app shell when
 // TokenPair.must_change_password is true. "Skip for now" is a legitimate
 // exit, not a bug — REQUIREMENT.md/FEATURES.md: the flag "encourages, but
-// does not enforce."
-// ponytail: submit is mocked — real pass wires this to
-// POST /api/v1/users/me/password and clears the flag from session state.
+// does not enforce." Submits POST /api/v1/users/me/password.
 export default function ChangePasswordPage() {
   const router = useRouter();
   const [form] = Form.useForm();
+  const { message } = App.useApp();
+  const [loading, setLoading] = useState(false);
 
-  const onFinish = () => {
-    router.push("/users");
+  const onFinish = async (values: { password: string }) => {
+    setLoading(true);
+    try {
+      await api("/users/me/password", {
+        method: "POST",
+        body: JSON.stringify({ password: values.password }),
+      });
+      message.success("Password updated");
+      router.push("/users");
+    } catch (e) {
+      setLoading(false);
+      message.error((e as Error).message);
+    }
   };
 
   return (
@@ -77,7 +89,7 @@ export default function ChangePasswordPage() {
             <Input.Password placeholder="••••••••" />
           </Form.Item>
           <Form.Item style={{ marginBottom: 8 }}>
-            <Button type="primary" htmlType="submit" block>
+            <Button type="primary" htmlType="submit" block loading={loading}>
               Set new password and continue
             </Button>
           </Form.Item>

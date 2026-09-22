@@ -10,16 +10,13 @@ import {
   ArrowDownOutlined,
   HolderOutlined,
 } from "@ant-design/icons";
-import { FIELDS, FIELD_LABELS, newId, type SortKey, type UserField } from "./filter-sort-types";
+import { newId, type SortField, type SortKey } from "../_lib/list-query";
 
 type Props = {
+  fields: SortField[]; // the page's sortable fields
   sortKeys: SortKey[];
   onApply: (sortKeys: SortKey[]) => void;
 };
-
-function newSortKey(): SortKey {
-  return { id: newId("s"), field: "name", direction: "asc" };
-}
 
 // Multi-sort builder — Popover + custom addable/removable/reorderable rows,
 // row order = evaluation priority (DESIGN_SYSTEM.md §4/§7,
@@ -28,9 +25,11 @@ function newSortKey(): SortKey {
 // is installed for this UI-only pass; the drag-handle icon is shown for
 // visual fidelity to the mock but isn't wired to pointer events. Swap in
 // a proper DnD (e.g. dnd-kit) if this needs real dragging later.
-export default function SortPopoverButton({ sortKeys, onApply }: Props) {
+export default function SortPopoverButton({ fields, sortKeys, onApply }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<SortKey[]>(sortKeys);
+
+  const unusedFields = fields.filter((f) => !draft.some((r) => r.field === f.key));
 
   const openPanel = (next: boolean) => {
     if (next) setDraft(sortKeys);
@@ -41,7 +40,8 @@ export default function SortPopoverButton({ sortKeys, onApply }: Props) {
     setDraft((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   const removeRow = (id: string) => setDraft((rows) => rows.filter((r) => r.id !== id));
-  const addRow = () => setDraft((rows) => [...rows, newSortKey()]);
+  const addRow = () =>
+    setDraft((rows) => [...rows, { id: newId("s"), field: unusedFields[0].key, direction: "asc" }]);
 
   const move = (index: number, dir: -1 | 1) =>
     setDraft((rows) => {
@@ -108,8 +108,12 @@ export default function SortPopoverButton({ sortKeys, onApply }: Props) {
           <Select
             style={{ flex: 1 }}
             value={row.field}
-            options={FIELDS.map((f) => ({ value: f, label: FIELD_LABELS[f] }))}
-            onChange={(field: UserField) => updateRow(row.id, { field })}
+            options={fields.map((f) => ({
+              value: f.key,
+              label: f.label,
+              disabled: f.key !== row.field && draft.some((r) => r.field === f.key),
+            }))}
+            onChange={(field: string) => updateRow(row.id, { field })}
           />
           <Tooltip title="Ascending">
             <Button
@@ -151,6 +155,7 @@ export default function SortPopoverButton({ sortKeys, onApply }: Props) {
         size="small"
         icon={<PlusOutlined />}
         onClick={addRow}
+        disabled={unusedFields.length === 0}
         style={{ paddingLeft: 0, marginBottom: 8 }}
       >
         Add sort

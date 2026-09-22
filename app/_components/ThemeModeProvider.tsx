@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { ConfigProvider } from "antd";
+import { App, ConfigProvider } from "antd";
 import { antdThemeConfig, type ThemeMode } from "../_lib/theme";
 
 const STORAGE_KEY = "gm-theme-mode";
@@ -42,7 +42,9 @@ export default function ThemeModeProvider({ children }: React.PropsWithChildren)
 
   return (
     <ThemeModeContext.Provider value={{ mode, toggle }}>
-      <ConfigProvider theme={antdThemeConfig(mode)}>{children}</ConfigProvider>
+      <ConfigProvider theme={antdThemeConfig(mode)}>
+        <App>{children}</App>
+      </ConfigProvider>
     </ThemeModeContext.Provider>
   );
 }

@@ -3,29 +3,29 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Form, Input, Button, Alert, Typography } from "antd";
-import { MOCK_USERS } from "../_lib/mock-data";
+import { ApiError, login } from "../_lib/api";
 
-// ponytail: no POST /api/v1/auth/login call yet — "login" just looks the
-// email up in MOCK_USERS and branches on its mustChangePassword flag, the
-// same branch real auth/session plumbing will drive off TokenPair later.
+// POST /api/v1/auth/login, then branch on TokenPair.must_change_password.
 export default function LoginPage() {
   const router = useRouter();
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const onFinish = (values: { email: string; password: string }) => {
+  const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
-    setError(false);
-    setTimeout(() => {
+    setError(null);
+    try {
+      const session = await login(values.email, values.password);
+      router.push(session.mustChangePassword ? "/change-password" : "/users");
+    } catch (e) {
       setLoading(false);
-      const user = MOCK_USERS.find((u) => u.email === values.email);
-      if (!user) {
-        // Generic 401 copy — never hints which field was wrong.
-        setError(true);
-        return;
-      }
-      router.push(user.mustChangePassword ? "/change-password" : "/users");
-    }, 300);
+      // Generic 401 copy — never hints which field was wrong.
+      setError(
+        e instanceof ApiError && e.status === 401
+          ? "Invalid email or password."
+          : "Couldn't sign in. Please try again.",
+      );
+    }
   };
 
   return (
@@ -57,7 +57,7 @@ export default function LoginPage() {
         {error && (
           <Alert
             type="error"
-            title="Invalid email or password."
+            title={error}
             showIcon
             style={{ marginBottom: 20 }}
           />
