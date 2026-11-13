@@ -31,6 +31,7 @@ const { Header, Sider, Content, Footer } = Layout;
 const NAV_ROUTES: Record<string, string> = {
   dashboard: "/",
   users: "/users",
+  "events-list": "/events",
   "events-configuration-categories": "/events/configuration/categories",
 };
 
@@ -46,6 +47,7 @@ const menuItems = [
     icon: <CalendarOutlined />,
     label: "Events",
     children: [
+      { key: "events-list", label: "All events" },
       { key: "events-transactions", label: "Transactions" },
       {
         key: "events-configuration",
@@ -66,6 +68,7 @@ function selectedKeyFor(pathname: string): string[] {
   if (pathname === "/") return ["dashboard"];
   if (pathname.startsWith("/users")) return ["users"];
   if (pathname.startsWith("/events/configuration/categories")) return ["events-configuration-categories"];
+  if (pathname === "/events" || pathname.startsWith("/events/")) return ["events-list"];
   return [];
 }
 

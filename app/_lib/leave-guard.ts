@@ -9,21 +9,25 @@ import { useEffect } from "react";
 // ponytail: browser back/forward (popstate) isn't intercepted — the App
 // Router has no navigation-blocking API; add a history guard if it matters.
 
+// A stack, not a slot: a page can hold more than one draft (the event page's
+// Details and Steps & tickets tabs), and saving one must not unguard the other.
+// The most recent dirty draft asks.
 type Ask = () => Promise<boolean>;
-let ask: Ask | null = null;
+const asks: Ask[] = [];
 
 export function confirmLeave(): Promise<boolean> {
+  const ask = asks.at(-1);
   return ask ? ask() : Promise.resolve(true);
 }
 
 export function useLeaveGuard(dirty: boolean, askUser: Ask) {
   useEffect(() => {
     if (!dirty) return;
-    ask = askUser;
+    asks.push(askUser);
     const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => {
-      if (ask === askUser) ask = null;
+      asks.splice(asks.lastIndexOf(askUser), 1);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
   }, [dirty, askUser]);

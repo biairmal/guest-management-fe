@@ -48,11 +48,16 @@ export function canEdit(c: Pick<CategorySummary, "source" | "tenant_id">, sessio
 
 // --- Draft -----------------------------------------------------------------
 // Rows carry a local key so ticks follow the step through reorder/remove;
-// keys become array indexes only in toPayload.
+// keys become array indexes only in toPayload. id is the saved row's id: a
+// category save ignores it (ids change on every save), an event setup save
+// sends it back so the row is updated in place (events.ts).
 
-export type DraftStep = { key: string; name: string; allowsMultiple: boolean };
-export type DraftTicketType = { key: string; name: string; rules: unknown; stepKeys: string[] };
-export type Draft = { name: string; steps: DraftStep[]; ticketTypes: DraftTicketType[] };
+export type DraftStep = { key: string; id?: string; name: string; allowsMultiple: boolean };
+export type DraftTicketType = { key: string; id?: string; name: string; rules: unknown; stepKeys: string[] };
+// Steps + ticket types + step access: what SetupEditor edits, for a category's
+// template set and an event's own setup alike.
+export type SetupDraft = { steps: DraftStep[]; ticketTypes: DraftTicketType[] };
+export type Draft = SetupDraft & { name: string };
 
 let seq = 0;
 export function newKey(prefix: string): string {
@@ -62,19 +67,21 @@ export function newKey(prefix: string): string {
 
 export const emptyDraft = (): Draft => ({ name: "", steps: [], ticketTypes: [] });
 
-export function toDraft(c: Category): Draft {
-  const steps = c.workflow_steps.map((s) => ({ key: newKey("s"), name: s.name, allowsMultiple: s.allows_multiple }));
+export function toSetupDraft(c: Pick<Category, "workflow_steps" | "ticket_types">): SetupDraft {
+  const steps = c.workflow_steps.map((s) => ({ key: newKey("s"), id: s.id, name: s.name, allowsMultiple: s.allows_multiple }));
   return {
-    name: c.name,
     steps,
     ticketTypes: c.ticket_types.map((t) => ({
       key: newKey("t"),
+      id: t.id,
       name: t.name,
       rules: t.rules,
       stepKeys: t.steps.map((i) => steps[i]?.key).filter((k): k is string => !!k),
     })),
   };
 }
+
+export const toDraft = (c: Category): Draft => ({ name: c.name, ...toSetupDraft(c) });
 
 export function toPayload(d: Draft) {
   const index = new Map(d.steps.map((s, i) => [s.key, i]));
@@ -101,8 +108,14 @@ export type DraftIssues = {
 };
 
 export function validate(d: Draft): DraftIssues {
-  const issues: DraftIssues = { steps: {}, ticketTypes: {}, count: 0 };
+  const issues = validateSetup(d);
   if (!d.name.trim()) issues.name = "Enter a category name.";
+  issues.count += issues.name ? 1 : 0;
+  return issues;
+}
+
+export function validateSetup(d: SetupDraft): DraftIssues {
+  const issues: DraftIssues = { steps: {}, ticketTypes: {}, count: 0 };
   d.steps.forEach((s) => {
     if (!s.name.trim()) issues.steps[s.key] = "Enter a step name.";
   });
@@ -112,14 +125,14 @@ export function validate(d: Draft): DraftIssues {
       issues.ticketTypes[t.key] = `Another ticket type is already called ${t.name.trim()}. Rename or remove one.`;
     }
   });
-  issues.count = (issues.name ? 1 : 0) + Object.keys(issues.steps).length + Object.keys(issues.ticketTypes).length;
+  issues.count = Object.keys(issues.steps).length + Object.keys(issues.ticketTypes).length;
   return issues;
 }
 
 // Maps a 400's meta.fields (JSON-path keys like "ticket_types[1].name") onto
 // draft rows. Keys that don't map (e.g. a bare field name from the boundary
 // validator) are returned as leftovers for the save bar.
-export function mapServerFields(d: Draft, fields: Record<string, string>) {
+export function mapServerFields(d: SetupDraft, fields: Record<string, string>) {
   const issues: DraftIssues = { steps: {}, ticketTypes: {}, count: 0 };
   const leftovers: string[] = [];
   for (const [path, msg] of Object.entries(fields)) {

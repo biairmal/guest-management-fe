@@ -6,12 +6,17 @@
 // internal/core/query: page, size, repeatable sort=field,DIR, and
 // field=value[;operator] with operators eq | like).
 
-// eq = exact match (the backend default); like = contains-style match.
-export type Operator = "eq" | "like";
+// eq = exact match (the backend default); like = contains-style match;
+// gt/gte/lt/lte = range operators (dates on GET /events, B16 R3).
+export type Operator = "eq" | "like" | "gt" | "gte" | "lt" | "lte";
 
 export const OPERATOR_LABELS: Record<Operator, string> = {
   eq: "is",
   like: "contains",
+  gt: "after",
+  gte: "on or after",
+  lt: "before",
+  lte: "on or before",
 };
 
 export type FilterField = {
